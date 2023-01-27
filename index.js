@@ -13,8 +13,8 @@ const githubApp = new App({
     appId: env.APPID,
     privateKey: env.PRIVATEKEY.replace(/\\n/gm, '\n'),
     oauth: {
-        clientId: CLIENTID,
-        clientSecret: CLIENTSECRET,
+        clientId: env.CLIENTID,
+        clientSecret: env.CLIENTSECRET,
     },
 });
 

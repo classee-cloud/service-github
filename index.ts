@@ -1,14 +1,11 @@
 import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
-import {Octokit, App } from "Octokit";
+import {Octokit, App, createNodeMiddleware } from "Octokit";
 import { env } from "./configuration";
 import cors from "cors";
+import { createServer } from "node:http";
 
 dotenv.config();
-
-const app: Express  = express();
-app.use(cors())
-const PORT = process.env.PORT || 8181;
 
 // -- define app and credentials
 const githubApp:App = new App({
@@ -17,6 +14,9 @@ const githubApp:App = new App({
     oauth: {
         clientId: env.CLIENTID,
         clientSecret: env.CLIENTID,
+    },
+    webhooks: {
+        secret: process.env.WEBHOOK_SECRET || '',
     },
 });
 
@@ -39,6 +39,21 @@ async function getRepos(app:App, id:number, loginName:string){
     return repos;
 }
 
+githubApp.webhooks.on("issues.opened", ({ octokit, payload }) => {
+    console.log("issues opened hit");
+    return githubApp.octokit.rest.issues.createComment({
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issue_number: 1,
+      body: "Hello, World!",
+    });
+  });
+
+
+const app: Express  = express();
+app.use(cors())
+app.use(createNodeMiddleware(githubApp));
+const PORT = process.env.PORT || 8181;
 
 app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
     // user data and key -- get from req body

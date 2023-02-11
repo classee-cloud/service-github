@@ -1,11 +1,19 @@
 import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
-import {Octokit, App, createNodeMiddleware } from "Octokit";
+import {Octokit, App, createNodeMiddleware } from "octokit";
 import { env } from "./configuration";
 import cors from "cors";
 import { createServer } from "node:http";
 
 dotenv.config();
+
+interface Job {
+    workflow_job: Object,
+    repository: Object,
+    id: number
+}
+var workflowQueued: Array<Job> = []
+var workflowInprogress: Array<Job> = []
 
 // -- define app and credentials
 const githubApp:App = new App({
@@ -16,18 +24,18 @@ const githubApp:App = new App({
         clientSecret: env.CLIENTID,
     },
     webhooks: {
-        secret: process.env.WEBHOOK_SECRET || '',
+        secret: env.WEBHOOK_SECRET,
     },
 });
 
-async function getRepos(app:App, id:number, loginName:string){
+async function getRepos(app:App, loginName:string){
     var repos = [];
     for await (const { installation } of githubApp.eachInstallation.iterator()) {
         //console.log(installation.id);
         for await (const { repository } of githubApp.eachRepository.iterator({
             installationId: installation.id,
         })) {
-                if((repository.owner.login == loginName) || (id == installation.id))  {
+                if((repository.owner.login == loginName))  {
                     const dict = {
                         id: installation.id,
                         repo: repository
@@ -39,29 +47,58 @@ async function getRepos(app:App, id:number, loginName:string){
     return repos;
 }
 
-githubApp.webhooks.on("issues.opened", ({ octokit, payload }) => {
-    console.log("issues opened hit");
-    return githubApp.octokit.rest.issues.createComment({
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      issue_number: 1,
-      body: "Hello, World!",
-    });
+githubApp.webhooks.on("workflow_job.queued", async (event) => {
+    console.log("Job Queued with ID: ", event.payload.workflow_job.id);
+    workflowQueued.push({"id":event.payload.workflow_job.id, "workflow_job":event.payload.workflow_job, "repository": event.payload.repository});
+    console.log(workflowQueued.length);
   });
 
+githubApp.webhooks.on("workflow_job.in_progress", async (event) => {
+    console.log("Job Inprogress with ID: ", event.payload.workflow_job.id);
 
+    // remove from queued
+    let temp:Array<Job> = []
+    for (let i=0; i<workflowQueued.length; i++ ){
+        if(workflowQueued[i].id != event.payload.workflow_job.id){
+            temp.push(workflowQueued[i]);
+        }
+    }
+    workflowQueued = temp;
+
+    // push to inprogress
+    workflowInprogress.push({"id":event.payload.workflow_job.id, "workflow_job":event.payload.workflow_job, "repository": event.payload.repository});
+    console.log(workflowQueued.length);
+    console.log(workflowInprogress.length);
+});
+
+githubApp.webhooks.on("workflow_job.completed", async (event) => {
+    console.log("Job completed with ID: ", event.payload.workflow_job.id);
+
+    // remove from in progress
+    let temp:Array<Job> = []
+    for (let i=0; i<workflowInprogress.length; i++ ){
+        if(workflowInprogress[i].id != event.payload.workflow_job.id){
+            temp.push(workflowInprogress[i]);
+        }
+    }
+    workflowInprogress = temp;
+    console.log(workflowInprogress.length);
+});
+
+
+// ------------------------------------------------------
 const app: Express  = express();
-app.use(cors())
 app.use(createNodeMiddleware(githubApp));
+app.use(cors());
 const PORT = process.env.PORT || 8181;
 
-app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
+app.get('/repodetails/:loginName/:tokens', async (req: Request, res: Response)=>{
     // user data and key -- get from req body
-   const appID = 33364735;
+   //const appID = 33364735;
    const loginName = req.params.loginName;
    
    // get all repo data for given loginName or appID
-   var repos = await getRepos(githubApp, appID, loginName);
+   var repos = await getRepos(githubApp, loginName);
    
    var repoData:Array<any> = []
    repos.map(r => {
@@ -72,9 +109,17 @@ app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
        }
        repoData.push(data);
    })
+
    res.status(200);
    res.send(repoData)
 });
+
+app.get('/api/github/webhooks', async (req: Request, res: Response)=>{
+    const value = await githubApp.octokit.request('GET /app/hook/deliveries', {})
+    //console.log(value);
+    res.json(value);
+});
+
 
 app.listen(PORT, () =>{
     console.log("Server is Successfully Running, and App is listening on port "+ PORT)

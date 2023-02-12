@@ -3,17 +3,20 @@ import dotenv from 'dotenv';
 import {Octokit, App, createNodeMiddleware } from "octokit";
 import { env } from "./configuration";
 import cors from "cors";
-import { createServer } from "node:http";
 
 dotenv.config();
 
 interface Job {
     workflow_job: Object,
     repository: Object,
-    id: number
+    id: number,
+    url: string
 }
+
 var workflowQueued: Array<Job> = []
 var workflowInprogress: Array<Job> = []
+const computeService:string = "http://localhost:8282";
+
 
 // -- define app and credentials
 const githubApp:App = new App({
@@ -49,8 +52,15 @@ async function getRepos(app:App, loginName:string){
 
 githubApp.webhooks.on("workflow_job.queued", async (event) => {
     console.log("Job Queued with ID: ", event.payload.workflow_job.id);
-    workflowQueued.push({"id":event.payload.workflow_job.id, "workflow_job":event.payload.workflow_job, "repository": event.payload.repository});
+    workflowQueued.push({"id":event.payload.workflow_job.id, 
+                        "workflow_job":event.payload.workflow_job, 
+                        "repository": event.payload.repository,
+                        "url": event.payload.repository.html_url});
     console.log(workflowQueued.length);
+
+    // TODO
+    // send the queued data to compute service - REST API
+    // ask compute service to allocate VMs and and run exec on them
   });
 
 githubApp.webhooks.on("workflow_job.in_progress", async (event) => {
@@ -66,7 +76,10 @@ githubApp.webhooks.on("workflow_job.in_progress", async (event) => {
     workflowQueued = temp;
 
     // push to inprogress
-    workflowInprogress.push({"id":event.payload.workflow_job.id, "workflow_job":event.payload.workflow_job, "repository": event.payload.repository});
+    workflowInprogress.push({"id":event.payload.workflow_job.id, 
+                        "workflow_job":event.payload.workflow_job, 
+                        "repository": event.payload.repository,
+                        "url": event.payload.repository.html_url});
     console.log(workflowQueued.length);
     console.log(workflowInprogress.length);
 });
@@ -114,11 +127,6 @@ app.get('/repodetails/:loginName/:tokens', async (req: Request, res: Response)=>
    res.send(repoData)
 });
 
-app.get('/api/github/webhooks', async (req: Request, res: Response)=>{
-    const value = await githubApp.octokit.request('GET /app/hook/deliveries', {})
-    //console.log(value);
-    res.json(value);
-});
 
 
 app.listen(PORT, () =>{

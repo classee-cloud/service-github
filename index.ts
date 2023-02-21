@@ -3,18 +3,20 @@ import dotenv from 'dotenv';
 import {Octokit, App, createNodeMiddleware } from "octokit";
 import { env } from "./configuration";
 import cors from "cors";
-import { createServer } from "node:http";
 
 dotenv.config();
 
 interface Job {
     workflow_job: Object,
     repository: Object,
-    id: number
+    id: number,
+    url: string
 }
+
 var workflowQueued: Array<Job> = []
 var workflowInprogress: Array<Job> = []
 var computeService:string = "http://localhost:8282"
+
 
 // -- define app and credentials
 const githubApp:App = new App({
@@ -50,7 +52,10 @@ async function getRepos(app:App, loginName:string){
 
 githubApp.webhooks.on("workflow_job.queued", async (event) => {
     console.log("Job Queued with ID: ", event.payload.workflow_job.id);
-    workflowQueued.push({"id":event.payload.workflow_job.id, "workflow_job":event.payload.workflow_job, "repository": event.payload.repository});
+    workflowQueued.push({"id":event.payload.workflow_job.id, 
+                        "workflow_job":event.payload.workflow_job, 
+                        "repository": event.payload.repository,
+                        "url": event.payload.repository.html_url});
     console.log(workflowQueued.length);
     
     // generate the JWT token for runner 
@@ -85,7 +90,10 @@ githubApp.webhooks.on("workflow_job.in_progress", async (event) => {
     workflowQueued = temp;
 
     // push to inprogress
-    workflowInprogress.push({"id":event.payload.workflow_job.id, "workflow_job":event.payload.workflow_job, "repository": event.payload.repository});
+    workflowInprogress.push({"id":event.payload.workflow_job.id, 
+                        "workflow_job":event.payload.workflow_job, 
+                        "repository": event.payload.repository,
+                        "url": event.payload.repository.html_url});
     console.log(workflowQueued.length);
     console.log(workflowInprogress.length);
 });

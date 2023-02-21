@@ -14,6 +14,7 @@ interface Job {
 }
 var workflowQueued: Array<Job> = []
 var workflowInprogress: Array<Job> = []
+var computeService:string = "http://localhost:8282"
 
 // -- define app and credentials
 const githubApp:App = new App({
@@ -51,6 +52,24 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
     console.log("Job Queued with ID: ", event.payload.workflow_job.id);
     workflowQueued.push({"id":event.payload.workflow_job.id, "workflow_job":event.payload.workflow_job, "repository": event.payload.repository});
     console.log(workflowQueued.length);
+    
+    // generate the JWT token for runner 
+    const jwtToken = "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";
+      
+    // call API to compute service
+    const requestOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id:event.payload.workflow_job.id,
+                               workflow_job:event.payload.workflow_job,
+                                org_name: event.payload.sender.login,
+                                repository:event.payload.repository,
+                                token:jwtToken
+                            })
+        };
+    const response = await fetch(computeService+'/runner', requestOptions);
+    //console.log(response);
+    console.log("Runner started");
   });
 
 githubApp.webhooks.on("workflow_job.in_progress", async (event) => {
@@ -92,7 +111,11 @@ app.use(createNodeMiddleware(githubApp));
 app.use(cors());
 const PORT = process.env.PORT || 8181;
 
-app.get('/repodetails/:loginName/:tokens', async (req: Request, res: Response)=>{
+app.get("/", async (req: Request, res: Response)=>{
+    res.send("Home");
+});
+
+app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
     // user data and key -- get from req body
    //const appID = 33364735;
    const loginName = req.params.loginName;
@@ -110,15 +133,13 @@ app.get('/repodetails/:loginName/:tokens', async (req: Request, res: Response)=>
        repoData.push(data);
    })
 
+   const value = await githubApp.octokit.request('GET /app', {})
+   console.log(value);
+
    res.status(200);
    res.send(repoData)
 });
 
-app.get('/api/github/webhooks', async (req: Request, res: Response)=>{
-    const value = await githubApp.octokit.request('GET /app/hook/deliveries', {})
-    //console.log(value);
-    res.json(value);
-});
 
 
 app.listen(PORT, () =>{

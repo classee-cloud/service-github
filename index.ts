@@ -28,7 +28,7 @@ const githubApp:App = new App({
     },
     webhooks: {
         secret: env.WEBHOOK_SECRET,
-    },
+    }
 });
 
 async function getRepos(app:App, loginName:string){
@@ -59,6 +59,7 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
     console.log(workflowQueued.length);
     
     // generate the JWT token for runner 
+    // save it in useState variable in server
     const jwtToken = "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";
       
     // call API to compute service
@@ -69,7 +70,6 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
                                workflow_job:event.payload.workflow_job,
                                 org_name: event.payload.sender.login,
                                 repository:event.payload.repository,
-                                token:jwtToken
                             })
         };
     const response = await fetch(computeService+'/runner', requestOptions);
@@ -120,6 +120,11 @@ app.use(cors());
 const PORT = process.env.PORT || 8181;
 
 app.get("/", async (req: Request, res: Response)=>{
+    
+    //const token = await githubApp.octokit.request('POST /orgs/{org}/actions/runners/registration-token', {
+    //    org: 'rajatkeshri'
+    //  })
+    // await console.log(token);
     res.send("Home");
 });
 
@@ -141,12 +146,24 @@ app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
        repoData.push(data);
    })
 
-   const value = await githubApp.octokit.request('GET /app', {})
-   console.log(value);
-
    res.status(200);
    res.send(repoData)
 });
+
+
+app.post('/runnertoken/:org/:reponame', async (req:Request, res:Response) => {
+    const ORG = req.params.org;
+    const REPONAME = req.params.reponame;
+
+    // initalize octokit
+    await githubApp.octokit.request('GET /app/installations').then(({data}) => {
+        console.log(data);
+      })
+    // get token for runner based on org and reponame
+    // return the token
+
+    res.send("token");
+})
 
 
 

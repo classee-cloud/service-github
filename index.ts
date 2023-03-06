@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import {Octokit, App, createNodeMiddleware } from "octokit";
 import { env } from "./configuration";
 import cors from "cors";
+import appClass from './appManager';
 
 dotenv.config();
 
@@ -13,42 +14,12 @@ interface Job {
     url: string
 }
 
-var workflowQueued: Array<Job> = []
-var workflowInprogress: Array<Job> = []
-var computeService:string = "http://localhost:8282"
+const appManager = new appClass();
+const githubApp:App = appManager.getApp();
+var workflowQueued = appManager.getWorkflowQueued();
+var workflowInprogress = appManager.getWorkflowInprogress();
+const computeService = appManager.getComputeService();
 
-
-// -- define app and credentials
-const githubApp:App = new App({
-    appId: env.APPID,
-    privateKey: env.PRIVATEKEY.replace(/\\n/gm, '\n'),
-    oauth: {
-        clientId: env.CLIENTID,
-        clientSecret: env.CLIENTID,
-    },
-    webhooks: {
-        secret: env.WEBHOOK_SECRET,
-    }
-});
-
-async function getRepos(app:App, loginName:string){
-    var repos = [];
-    for await (const { installation } of githubApp.eachInstallation.iterator()) {
-        //console.log(installation.id);
-        for await (const { repository } of githubApp.eachRepository.iterator({
-            installationId: installation.id,
-        })) {
-                if((repository.owner.login == loginName))  {
-                    const dict = {
-                        id: installation.id,
-                        repo: repository
-                    }
-                    repos.push(dict);
-                }
-            }
-        }
-    return repos;
-}
 
 githubApp.webhooks.on("workflow_job.queued", async (event) => {
     console.log("Job Queued with ID: ", event.payload.workflow_job.id);
@@ -60,7 +31,7 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
     
     // generate the JWT token for runner 
     // save it in useState variable in server
-    const jwtToken = "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";
+    //const jwtToken = "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";
       
     // call API to compute service
     const requestOptions = {
@@ -134,7 +105,7 @@ app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
    const loginName = req.params.loginName;
    
    // get all repo data for given loginName or appID
-   var repos = await getRepos(githubApp, loginName);
+   var repos = await appManager.getRepos(githubApp, loginName);
    
    var repoData:Array<any> = []
    repos.map(r => {
@@ -151,21 +122,47 @@ app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
 });
 
 
-app.post('/runnertoken/:org/:reponame', async (req:Request, res:Response) => {
+app.get('/runnertoken/:org/:reponame', async (req:Request, res:Response) => {
     const ORG = req.params.org;
     const REPONAME = req.params.reponame;
 
     // initalize octokit
-    await githubApp.octokit.request('GET /app/installations').then(({data}) => {
-        console.log(data);
-      })
+    const instance = appManager.getOctokitInstance(ORG);
+    var octo:any = null;
+    var installationID: number = 0;
+    if (instance.length != 0){
+        installationID = instance[0].id;
+        octo = instance[0].octokit;
+    }
+
+    // get access token for octo
+    //const { token } = await octo.data ({ installationId: installationID, permissions: { admin: "org" } });
+    const { data: { token } } = await octo.request("POST /app/installations/{installation_id}/access_tokens", {
+        installation_id: installationID,
+        permissions: {
+          administration: "write",
+        },
+      });
+    
     // get token for runner based on org and reponame
-    // return the token
-
-    res.send("token");
+    await octo.request('POST /repos/{owner}/{repo}/actions/runners/registration-token', {
+        owner: ORG,
+        repo: REPONAME,
+        headers: {
+            'X-GitHub-Api-Version': '2022-11-28',
+            authorization: `token  ${token}`,
+            accept: "application/vnd.github.machine-man-preview+json",
+        }
+      })
+        .then((response: any) => {
+            //console.log(response);
+            // return the token
+            res.send({"token":response.data.token});
+        })
+        .catch((err:any) => {
+            console.log(err);
+        });
 })
-
-
 
 app.listen(PORT, () =>{
     console.log("Server is Successfully Running, and App is listening on port "+ PORT)

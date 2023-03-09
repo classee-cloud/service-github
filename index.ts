@@ -113,6 +113,7 @@ app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
            "id": r.repo.id,
            "name":r.repo.name,
            "link":r.repo.html_url,
+           "org":loginName
        }
        repoData.push(data);
    })

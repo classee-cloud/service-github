@@ -14,7 +14,8 @@ export default class appManager {
 
     private _workflowQueued: Array<Job> = [];
     private _workflowInprogress: Array<Job> = [];
-    private _computeService:string = "http://localhost:8282";
+    private _computeService:string = 'https://compute-dev.classee.cloud/';
+    private _database:string = 'https://db-dev.classee.cloud/';
     private _githubApp:App;
     private _installations: { orgName: string, id: number, octokit: Octokit }[] = [];
 
@@ -67,6 +68,10 @@ export default class appManager {
 
     public getComputeService(){
         return this._computeService;
+    }
+
+    public getDatabase(){
+        return this._database;
     }
 
     public async getRepos(app:App, loginName:string){

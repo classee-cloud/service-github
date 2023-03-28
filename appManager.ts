@@ -1,6 +1,15 @@
 import { App, Octokit } from "octokit";
+import dotenv from 'dotenv';
 import { env } from "./configuration";
 import { createAppAuth } from '@octokit/auth-app';
+
+dotenv.config();
+
+const APPID=process.env.APPID || env.APPID
+const PRIVATEKEY=process.env.PRIVATEKEY || env.PRIVATEKEY
+const CLIENTID= process.env.CLIENTID || env.CLIENTID
+const CLIENTSECRET= process.env.CLIENTSECRET || env.CLIENTSECRET
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || env.WEBHOOK_SECRET
 
 interface Job {
     workflow_job: Object,
@@ -22,14 +31,14 @@ export default class appManager {
     constructor(){
         // -- define app and credentials
         this._githubApp = new App({
-            appId: env.APPID,
-            privateKey: env.PRIVATEKEY.replace(/\\n/gm, '\n'),
+            appId: APPID,
+            privateKey: PRIVATEKEY.replace(/\\n/gm, '\n'),
             oauth: {
-                clientId: env.CLIENTID,
-                clientSecret: env.CLIENTID,
+                clientId: CLIENTID,
+                clientSecret: CLIENTSECRET,
             },
             webhooks: {
-                secret: env.WEBHOOK_SECRET,
+                secret: WEBHOOK_SECRET,
             }
         });
         
@@ -45,8 +54,8 @@ export default class appManager {
                 octokit: new Octokit({
                     authStrategy: createAppAuth,
                     auth: {
-                        appId: env.APPID,
-                        privateKey: env.PRIVATEKEY.replace(/\\n/gm, '\n'),
+                        appId: APPID,
+                        privateKey: PRIVATEKEY.replace(/\\n/gm, '\n'),
                         installationId: installation.id,
                     },
                 })

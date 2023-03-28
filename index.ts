@@ -1,7 +1,6 @@
 import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import {Octokit, App, createNodeMiddleware } from "octokit";
-import { env } from "./configuration";
 import cors from "cors";
 import appClass from './appManager';
 import { authenticateToken } from './middleware/authenticateToken';

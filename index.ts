@@ -1,9 +1,10 @@
 import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import {Octokit, App, createNodeMiddleware } from "octokit";
-import { env } from "./configuration";
 import cors from "cors";
 import appClass from './appManager';
+import { authenticateToken } from './middleware/authenticateToken';
+import { Console } from 'console';
 
 dotenv.config();
 
@@ -19,6 +20,7 @@ const githubApp:App = appManager.getApp();
 var workflowQueued = appManager.getWorkflowQueued();
 var workflowInprogress = appManager.getWorkflowInprogress();
 const computeService = appManager.getComputeService();
+const database = appManager.getDatabase();
 
 
 githubApp.webhooks.on("workflow_job.queued", async (event) => {
@@ -28,13 +30,19 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
                         "repository": event.payload.repository,
                         "url": event.payload.repository.html_url});
     console.log(workflowQueued.length);
+
+    // update repo to queued
+    requestOptions = {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+                status: "queued"
+            })
+        };
+    response = await fetch(database+`/api/config_repos/${event.payload.repository.name}`, requestOptions);
     
-    // generate the JWT token for runner 
-    // save it in useState variable in server
-    //const jwtToken = "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";
-      
     // call API to compute service
-    const requestOptions = {
+    var requestOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id:event.payload.workflow_job.id,
@@ -43,8 +51,8 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
                                 repository:event.payload.repository,
                             })
         };
-    const response = await fetch(computeService+'/runner', requestOptions);
-    //console.log(response);
+    var response = await fetch(computeService+'/runner', requestOptions);
+
     console.log("Runner started");
   });
 
@@ -60,6 +68,16 @@ githubApp.webhooks.on("workflow_job.in_progress", async (event) => {
     }
     workflowQueued = temp;
 
+    // update repo to inprogress
+    const requestOptions = {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+                status: "in progress"
+            })
+        };
+    const response = await fetch(database+`/api/config_repos/${event.payload.repository.name}`, requestOptions);
+
     // push to inprogress
     workflowInprogress.push({"id":event.payload.workflow_job.id, 
                         "workflow_job":event.payload.workflow_job, 
@@ -72,6 +90,15 @@ githubApp.webhooks.on("workflow_job.in_progress", async (event) => {
 githubApp.webhooks.on("workflow_job.completed", async (event) => {
     console.log("Job completed with ID: ", event.payload.workflow_job.id);
 
+    const requestOptions = {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+                status: "not started/completed"
+            })
+        };
+    const response = await fetch(database+`/api/config_repos/${event.payload.repository.name}`, requestOptions);
+
     // remove from in progress
     let temp:Array<Job> = []
     for (let i=0; i<workflowInprogress.length; i++ ){
@@ -81,6 +108,7 @@ githubApp.webhooks.on("workflow_job.completed", async (event) => {
     }
     workflowInprogress = temp;
     console.log(workflowInprogress.length);
+
 });
 
 
@@ -90,7 +118,7 @@ app.use(createNodeMiddleware(githubApp));
 app.use(cors());
 const PORT = process.env.PORT || 8181;
 
-app.get("/", async (req: Request, res: Response)=>{
+app.get("/", authenticateToken, async (req: Request, res: Response)=>{
     
     //const token = await githubApp.octokit.request('POST /orgs/{org}/actions/runners/registration-token', {
     //    org: 'rajatkeshri'
@@ -99,9 +127,7 @@ app.get("/", async (req: Request, res: Response)=>{
     res.send("Home");
 });
 
-app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
-    // user data and key -- get from req body
-   //const appID = 33364735;
+app.get('/repodetails/:loginName', authenticateToken, async (req: Request, res: Response)=>{
    const loginName = req.params.loginName;
    
    // get all repo data for given loginName or appID
@@ -113,6 +139,7 @@ app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
            "id": r.repo.id,
            "name":r.repo.name,
            "link":r.repo.html_url,
+           "org":loginName
        }
        repoData.push(data);
    })
@@ -122,7 +149,7 @@ app.get('/repodetails/:loginName', async (req: Request, res: Response)=>{
 });
 
 
-app.get('/runnertoken/:org/:reponame', async (req:Request, res:Response) => {
+app.get('/runnertoken/:org/:reponame', authenticateToken,  async (req:Request, res:Response) => {
     const ORG = req.params.org;
     const REPONAME = req.params.reponame;
 

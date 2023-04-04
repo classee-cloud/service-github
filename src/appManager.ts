@@ -84,14 +84,14 @@ export default class appManager {
     }
 
     public async getRepos(app:App, loginName:string){
-        var repos = [];
+        var repos:{id: number, repo: any}[] = [];
         for await (const { installation } of this._githubApp.eachInstallation.iterator()) {
             //console.log(installation.id);
             for await (const { repository } of this._githubApp.eachRepository.iterator({
                 installationId: installation.id,
             })) {
                     if((repository.owner.login == loginName))  {
-                        const dict = {
+                        const dict:{id: number, repo: any} = {
                             id: installation.id,
                             repo: repository
                         }

@@ -23,10 +23,11 @@ export default class appManager {
 
     private _workflowQueued: Array<Job> = [];
     private _workflowInprogress: Array<Job> = [];
-    private _computeService:string = 'https://compute-dev.classee.cloud/';
-    private _database:string = 'https://db-dev.classee.cloud/';
+    private _computeService:string = 'https://compute-dev.classee.cloud';
+    private _database:string = 'https://db-dev.classee.cloud';
     private _githubApp:App;
     private _installations: { orgName: string, id: number, octokit: Octokit }[] = [];
+    private _accessTokenMap: Record<string, string> = {};
 
     constructor(){
         // -- define app and credentials
@@ -84,14 +85,14 @@ export default class appManager {
     }
 
     public async getRepos(app:App, loginName:string){
-        var repos:{id: number, repo: any}[] = [];
+        var repos = [];
         for await (const { installation } of this._githubApp.eachInstallation.iterator()) {
             //console.log(installation.id);
             for await (const { repository } of this._githubApp.eachRepository.iterator({
                 installationId: installation.id,
             })) {
                     if((repository.owner.login == loginName))  {
-                        const dict:{id: number, repo: any} = {
+                        const dict = {
                             id: installation.id,
                             repo: repository
                         }
@@ -112,5 +113,11 @@ export default class appManager {
         return v;
     }
 
-    
+    public getAccessTokens(){
+        return this._accessTokenMap;
+    }
+
+    public setAccessTokens(name:string, token:string){
+        this._accessTokenMap[name] = token;
+    }
 }

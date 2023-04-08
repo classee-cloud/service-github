@@ -2,9 +2,13 @@ import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import {Octokit, App, createNodeMiddleware } from "octokit";
 import cors from "cors";
-import appClass from './appManager';
-import { authenticateToken } from './middleware/authenticateToken';
-import { Console } from 'console';
+import appClass from './src/appManager';
+import { authenticateToken } from './src/middleware/authenticateToken';
+//import { Console } from 'console';
+import jwt from 'jsonwebtoken'
+import fs from 'fs/promises';
+import path from "path";
+import axios from 'axios';
 
 dotenv.config();
 
@@ -39,9 +43,26 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
                 status: "queued"
             })
         };
-    response = await fetch(database+`/api/config_repos/${event.payload.repository.name}`, requestOptions);
-    
+
+    var response = await fetch(database+`/api/config_repos/${event.payload.repository.name}`, requestOptions);
+
     // call API to compute service
+    // generate token based on org name and repository
+    const secretKey = await fs.readFile(path.join(__dirname, 'src/middleware/custom-token.pem')) 
+    const repoName = event.payload.repository.html_url.split("/").at(-1);
+    const accessToken = jwt.sign(
+            {org: event.payload.sender.login,
+             reponame: repoName},
+             secretKey,
+            {expiresIn: "30m"}
+    )
+    //console.log(accessToken);
+
+    // store in map
+    appManager.setAccessTokens(event.payload.sender.login + " " + repoName, accessToken);
+    //console.log("-------", accessToken,appManager.getAccessTokens());
+
+    // send the token along with body
     var requestOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -49,9 +70,20 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
                                workflow_job:event.payload.workflow_job,
                                 org_name: event.payload.sender.login,
                                 repository:event.payload.repository,
+                                authorization: accessToken,
                             })
         };
-    var response = await fetch(computeService+'/runner', requestOptions);
+    
+    response = await fetch(computeService+'/runner', requestOptions);
+    /*response = await axios.post(computeService+'/runner', 
+        { id:event.payload.workflow_job.id,
+            workflow_job:event.payload.workflow_job,
+            org_name: event.payload.sender.login,
+            repository:event.payload.repository,
+            authorization: accessToken,
+         });
+    */
+    
 
     console.log("Runner started");
   });
@@ -149,46 +181,58 @@ app.get('/repodetails/:loginName', authenticateToken, async (req: Request, res: 
 });
 
 
-app.get('/runnertoken/:org/:reponame', authenticateToken,  async (req:Request, res:Response) => {
+app.get('/runnertoken/:org/:reponame/:accesstoken',  async (req:Request, res:Response) => {
     const ORG = req.params.org;
     const REPONAME = req.params.reponame;
 
-    // initalize octokit
-    const instance = appManager.getOctokitInstance(ORG);
-    var octo:any = null;
-    var installationID: number = 0;
-    if (instance.length != 0){
-        installationID = instance[0].id;
-        octo = instance[0].octokit;
+    // check if access token is correct
+    const tokenMap = appManager.getAccessTokens()
+    if (tokenMap[ORG+" "+REPONAME] == req.params.accesstoken){
+        console.log("token validated")
+        
+        // initalize octokit
+        const instance = appManager.getOctokitInstance(ORG);
+        var octo:any = null;
+        var installationID: number = 0;
+        if (instance.length != 0){
+            installationID = instance[0].id;
+            octo = instance[0].octokit;
+        }
+
+        // get access token for octo
+        //const { token } = await octo.data ({ installationId: installationID, permissions: { admin: "org" } });
+        const { data: { token } } = await octo.request("POST /app/installations/{installation_id}/access_tokens", {
+            installation_id: installationID,
+            permissions: {
+            administration: "write",
+            },
+        });
+        
+        // get token for runner based on org and reponame
+        await octo.request('POST /repos/{owner}/{repo}/actions/runners/registration-token', {
+            owner: ORG,
+            repo: REPONAME,
+            headers: {
+                'X-GitHub-Api-Version': '2022-11-28',
+                authorization: `token  ${token}`,
+                accept: "application/vnd.github.machine-man-preview+json",
+            }
+        })
+            .then((response: any) => {
+                //console.log(response);
+                // return the token
+                res.send({"token":response.data.token});
+            })
+            .catch((err:any) => {
+                console.log(err);
+            });
+    }
+    else{
+        console.log("invalid token")
+        res.send({"token":null});
     }
 
-    // get access token for octo
-    //const { token } = await octo.data ({ installationId: installationID, permissions: { admin: "org" } });
-    const { data: { token } } = await octo.request("POST /app/installations/{installation_id}/access_tokens", {
-        installation_id: installationID,
-        permissions: {
-          administration: "write",
-        },
-      });
     
-    // get token for runner based on org and reponame
-    await octo.request('POST /repos/{owner}/{repo}/actions/runners/registration-token', {
-        owner: ORG,
-        repo: REPONAME,
-        headers: {
-            'X-GitHub-Api-Version': '2022-11-28',
-            authorization: `token  ${token}`,
-            accept: "application/vnd.github.machine-man-preview+json",
-        }
-      })
-        .then((response: any) => {
-            //console.log(response);
-            // return the token
-            res.send({"token":response.data.token});
-        })
-        .catch((err:any) => {
-            console.log(err);
-        });
 })
 
 app.listen(PORT, () =>{

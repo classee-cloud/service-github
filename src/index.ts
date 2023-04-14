@@ -2,9 +2,9 @@ import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import {Octokit, App, createNodeMiddleware } from "octokit";
 import cors from "cors";
-import appClass from './appManager';
-import { authenticateToken } from './middleware/authenticateToken';
-import { Console } from 'console';
+import appClass from './src/appManager';
+import { authenticateToken } from './src/middleware/authenticateToken';
+//import { Console } from 'console';
 import jwt from 'jsonwebtoken'
 import fs from 'fs/promises';
 import path from "path";
@@ -19,12 +19,20 @@ interface Job {
     url: string
 }
 
+interface JwtPayload {
+    org: string;
+    reponame: string;
+    iat: number;
+    exp: number;
+  }
+
 const appManager = new appClass();
 const githubApp:App = appManager.getApp();
 var workflowQueued = appManager.getWorkflowQueued();
 var workflowInprogress = appManager.getWorkflowInprogress();
 const computeService = appManager.getComputeService();
 const database = appManager.getDatabase();
+const tokenExpiresIn = process.env.TOKENLIFE || "1h"
 
 
 githubApp.webhooks.on("workflow_job.queued", async (event) => {
@@ -54,7 +62,7 @@ githubApp.webhooks.on("workflow_job.queued", async (event) => {
             {org: event.payload.sender.login,
              reponame: repoName},
              secretKey,
-            {expiresIn: "30m"}
+            {expiresIn: tokenExpiresIn}
     )
     //console.log(accessToken);
 
@@ -182,8 +190,17 @@ app.get('/repodetails/:loginName', authenticateToken, async (req: Request, res: 
 
 
 app.get('/runnertoken/:org/:reponame/:accesstoken',  async (req:Request, res:Response) => {
-    const ORG = req.params.org;
-    const REPONAME = req.params.reponame;
+    //const ORG = req.params.org;
+    //const REPONAME = req.params.reponame;
+
+    // get the token
+    const token = req.params.accesstoken;
+
+    // decode the token, extract org and reponame
+    const secretKey = await fs.readFile(path.join(__dirname, 'src/middleware/custom-token.pem')) 
+    const decoded:JwtPayload =  <JwtPayload> jwt.verify(token, secretKey);
+    const ORG = decoded.org
+    const REPONAME = decoded.reponame;
 
     // check if access token is correct
     const tokenMap = appManager.getAccessTokens()
@@ -228,7 +245,6 @@ app.get('/runnertoken/:org/:reponame/:accesstoken',  async (req:Request, res:Res
             });
     }
     else{
-        console.log("invalid token")
         res.send({"token":null});
     }
 

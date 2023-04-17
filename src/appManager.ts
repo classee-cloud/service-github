@@ -23,8 +23,8 @@ export default class appManager {
 
     private _workflowQueued: Array<Job> = [];
     private _workflowInprogress: Array<Job> = [];
-    private _computeService:string = 'https://compute-dev.classee.cloud';
-    private _database:string = 'https://db-dev.classee.cloud';
+    private _computeService:string = process.env.REACT_APP_SERVICE_GITHUB || 'https://compute-dev.classee.cloud';
+    private _database:string = process.env.REACT_APP_SERVICE_DB 'https://db-dev.classee.cloud';
     private _githubApp:App;
     private _installations: { orgName: string, id: number, octokit: Octokit }[] = [];
     private _accessTokenMap: Record<string, string> = {};

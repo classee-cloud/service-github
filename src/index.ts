@@ -204,7 +204,8 @@ app.get('/runnertoken/:org/:reponame/:accesstoken',  async (req:Request, res:Res
 
     // check if access token is correct
     const tokenMap = appManager.getAccessTokens()
-    if (tokenMap[ORG+" "+REPONAME] == req.params.accesstoken){
+    //if (tokenMap[ORG+" "+REPONAME] == req.params.accesstoken){
+    if (ORG == req.params.org && REPONAME == req.params.reponame){
         console.log("token validated")
         
         // initalize octokit

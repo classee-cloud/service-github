@@ -18,7 +18,7 @@ interface Job {
     url: string
 }
 
-
+// class to hold github app functionality
 export default class appManager {
 
     private _workflowQueued: Array<Job> = [];
@@ -29,6 +29,7 @@ export default class appManager {
     private _installations: { orgName: string, id: number, octokit: Octokit }[] = [];
     private _accessTokenMap: Record<string, string> = {};
 
+    // constructor to initialize the github app
     constructor(){
         // -- define app and credentials
         this._githubApp = new App({
@@ -46,6 +47,7 @@ export default class appManager {
         this.updateOcto();
     }
 
+    // function to update the octokit instance per user/org with installation id and auth
     private async updateOcto(){
         const installations = await this._githubApp.octokit.request('GET /app/installations');
         for (let installation of installations.data) {
@@ -64,26 +66,32 @@ export default class appManager {
         }
     }
 
+    // returns the current configuration of githubapp
     public getApp(){
         return this._githubApp;
     }
 
+    // returns the workflows which are queued
     public getWorkflowQueued(){
         return this._workflowQueued;
     }
 
+    // returns the workflows which are in progress
     public getWorkflowInprogress(){
         return this._workflowInprogress;
     }
 
+    // returns the compute service URL
     public getComputeService(){
         return this._computeService;
     }
 
+    // returns the database URL
     public getDatabase(){
         return this._database;
     }
 
+    // function to return the repositories, given githubapp and user login name
     public async getRepos(app:App, loginName:string){
         var repos:{id: number, repo: any}[] = [];
         for await (const { installation } of this._githubApp.eachInstallation.iterator()) {
@@ -103,6 +111,7 @@ export default class appManager {
         return repos;
     }
 
+    // function to return the octokit instance for org name/user name given
     public getOctokitInstance(orgName:string){
         var v:{ orgName: string, id: number, octokit: Octokit }[] = [];
         const x = this._installations.map((e) => {
@@ -113,10 +122,12 @@ export default class appManager {
         return v;
     }
 
+    // return the access token dictionary - dictionary holds user name and access token for it
     public getAccessTokens(){
         return this._accessTokenMap;
     }
 
+    // set the access token given user name and token for it
     public setAccessTokens(name:string, token:string){
         this._accessTokenMap[name] = token;
     }

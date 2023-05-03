@@ -28,6 +28,7 @@ export default class appManager {
     private _githubApp:App;
     private _installations: { orgName: string, id: number, octokit: Octokit }[] = [];
     private _accessTokenMap: Record<string, string> = {};
+    private _loginName:String = "";
 
     constructor(){
         // -- define app and credentials
@@ -82,6 +83,14 @@ export default class appManager {
 
     public getDatabase(){
         return this._database;
+    }
+
+    public getLoginName(){
+        return this._loginName;
+    }
+
+    public setLoginName(name:String){
+        this._loginName = name;
     }
 
     public async getRepos(app:App, loginName:string){
